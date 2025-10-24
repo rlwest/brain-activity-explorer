@@ -41,7 +41,7 @@
         </div>
 
         <!-- Control and Information Panel --><div class="mt-8 p-6 bg-white rounded-xl shadow-lg border border-gray-200">
-            <h2 class="text-2xl font-bold text-gray-800 mb-4">Activation Status</h2>
+            <h2 class="2xl font-bold text-gray-800 mb-4">Activation Status</h2>
             <div id="info-panel" class="space-y-3">
                 <p class="text-lg">
                     <span class="font-semibold text-gray-500">Active Lobe/Region:</span>
@@ -77,32 +77,42 @@
         };
 
         // Base color for brain tissue (Hemispheres)
-        const tissueColor = 0xf0e0d0; // Light pink/beige tissue color
+        const tissueColor = 0x707070; // Medium Gray for a more realistic, clinical look
         const tissueColorTHREE = new THREE.Color(tissueColor);
+        
+        // --- Test Rotation Constant ---
+        // X-axis test rotation: +90 degrees (brain frontal lobes pointing up towards the top of the skull)
+        const brainTestXRotation = Math.PI / 2; 
+        // Y-axis rotation reset to 0 degrees
+        const brainTestYRotation = 0; 
+        // Z-axis rotation: 0 degrees
+        const brainTestZRotation = 0; 
 
         // Configuration for the brain lobes and regions with distinct resting colors
         const LOBE_CONFIG = [
-            // Frontal Lobe (Red/Crimson)
-            { name: "Frontal Lobe (R)", restingColor: 0xFFD1DC, activeColor: 0xFF4747, function: "Executive functions, planning, attention, and motor control.", position: [1.3, 1.5, 1.5] },
-            { name: "Frontal Lobe (L)", restingColor: 0xFFD1DC, activeColor: 0xFF4747, function: "Executive functions, planning, attention, and motor control.", position: [-1.3, 1.5, 1.5] },
+            // Positions adjusted based on the provided lateral brain image and current brain X-rotation (+90 degrees)
+            // Frontal Lobe (Red/Crimson) 
+            { name: "Frontal Lobe (R)", restingColor: 0xFFD1DC, activeColor: 0xFF4747, function: "Executive functions, planning, attention, and motor control.", position: [1.1, 4.0, -2.0] }, // Y is forward/back; Z is vertical up/down
+            { name: "Frontal Lobe (L)", restingColor: 0xFFD1DC, activeColor: 0xFF4747, function: "Executive functions, planning, attention, and motor control.", position: [-1.1, 4.0, -2.0] }, // Y is forward/back; Z is vertical up/down
 
-            // Parietal Lobe (Orange/Gold)
-            { name: "Parietal Lobe (R)", restingColor: 0xFFEBCD, activeColor: 0xFFD700, function: "Processing touch, spatial awareness, and navigation.", position: [1.3, -1.0, 1.5] },
-            { name: "Parietal Lobe (L)", restingColor: 0xFFEBCD, activeColor: 0xFFD700, function: "Processing touch, spatial awareness, and navigation.", position: [-1.3, -1.0, 1.5] },
+            // Parietal Lobe (Orange/Gold) 
+            { name: "Parietal Lobe (R)", restingColor: 0xFFEBCD, activeColor: 0xFFD700, function: "Processing touch, spatial awareness, and navigation.", position: [1.1, 1.0, -2.5] }, // Z moved Higher
+            { name: "Parietal Lobe (L)", restingColor: 0xFFEBCD, activeColor: 0xFFD700, function: "Processing touch, spatial awareness, and navigation.", position: [-1.1, 1.0, -2.5] }, // Z moved Higher
 
-            // Temporal Lobe (Blue/Light Blue)
-            { name: "Temporal Lobe (R)", restingColor: 0xE0FFFF, activeColor: 0x87CEFA, function: "Hearing, memory processing, and object recognition.", position: [1.3, 2.0, -1.5] },
-            { name: "Temporal Lobe (L)", restingColor: 0xE0FFFF, activeColor: 0x87CEFA, function: "Hearing, memory processing, and object recognition.", position: [-1.3, 2.0, -1.5] },
+            // Temporal Lobe (Blue/Light Blue) 
+            { name: "Temporal Lobe (R)", restingColor: 0xE0FFFF, activeColor: 0x87CEFA, function: "Hearing, memory processing, and object recognition.", position: [1.1, 0.0, 2.0] }, // Z Lowered
+            { name: "Temporal Lobe (L)", restingColor: 0xE0FFFF, activeColor: 0x87CEFA, function: "Hearing, memory processing, and object recognition.", position: [-1.1, 0.0, 2.0] }, // Z Lowered
 
-            // Occipital Lobe (Green/Sea Green)
-            { name: "Occipital Lobe (R)", restingColor: 0xD0F0C0, activeColor: 0x3CB371, function: "Primary visual processing center.", position: [1.3, -2.5, -0.5] },
-            { name: "Occipital Lobe (L)", restingColor: 0xD0F0C0, activeColor: 0x3CB371, function: "Primary visual processing center.", position: [-1.3, -2.5, -0.5] },
+            // Occipital Lobe (Green/Sea Green) - ADJUSTED Z TO 2.5
+            { name: "Occipital Lobe (R)", restingColor: 0xD0F0C0, activeColor: 0x3CB371, function: "Primary visual processing center.", position: [1.1, -1.5, 2.5] }, // Z moved Lower
+            { name: "Occipital Lobe (L)", restingColor: 0xD0F0C0, activeColor: 0x3CB371, function: "Primary visual processing center.", position: [-1.1, -1.5, 2.5] }, // Z moved Lower
 
-            // Cerebellum (Purple/Medium Purple)
-            { name: "Cerebellum", restingColor: 0xE6E6FA, activeColor: 0x9370DB, function: "Coordination, posture, motor learning, and balance.", position: [0, -3.2, 0.5] }
+            // Cerebellum (Purple/Medium Purple) - ADJUSTED Z TO 3.0
+            { name: "Cerebellum", restingColor: 0xE6E6FA, activeColor: 0x9370DB, function: "Coordination, posture, motor learning, and balance.", position: [0, -2.5, 3.0] } // Moved Lower
         ];
 
         let brainGroup = new THREE.Group();
+        let headGroup = new THREE.Group(); // New group for the head to keep it separate from brain's rotation
 
         // Utility function placeholder (not used for local rendering)
         const exponentialBackoffFetch = async (url, options, retries = 3) => {
@@ -137,10 +147,10 @@
             controls.maxDistance = 30;
 
             // --- 5. Lighting ---
-            const ambientLight = new THREE.AmbientLight(0x404040, 5); // soft white light
+            const ambientLight = new THREE.AmbientLight(0x404040, 7); // Increased intensity for better base illumination
             scene.add(ambientLight);
 
-            const directionalLight = new THREE.DirectionalLight(0xffffff, 4);
+            const directionalLight = new THREE.DirectionalLight(0xffffff, 6); // Increased intensity for stronger highlights/shadows
             directionalLight.position.set(5, 10, 7.5);
             scene.add(directionalLight);
 
@@ -148,15 +158,39 @@
             createBrainModel();
             scene.add(brainGroup);
 
-            // --- 7. Raycasting Setup (for clicking) ---
+            // --- 7. Head Model Creation ---
+            createHeadModel();
+            scene.add(headGroup);
+
+            // --- 8. Raycasting Setup (for clicking) ---
             raycaster = new THREE.Raycaster();
             mouse = new THREE.Vector2();
 
-            // --- 8. Event Listeners ---
+            // --- 9. Event Listeners ---
             window.addEventListener('resize', onWindowResize);
             renderer.domElement.addEventListener('click', onClick, false);
             renderer.domElement.addEventListener('touchstart', onTouchStart, false);
             autoToggleBtn.addEventListener('click', toggleAutoMode);
+        }
+
+        function applyDisplacement(geometry, strength) {
+            const positionAttribute = geometry.attributes.position;
+            const tempVector = new THREE.Vector3();
+            
+            for (let i = 0; i < positionAttribute.count; i++) {
+                tempVector.fromBufferAttribute(positionAttribute, i);
+                tempVector.normalize();
+
+                const displacement = (Math.random() * strength) - (strength / 2);
+                
+                positionAttribute.setXYZ(
+                    i,
+                    positionAttribute.getX(i) + tempVector.x * displacement,
+                    positionAttribute.getY(i) + tempVector.y * displacement,
+                    positionAttribute.getZ(i) + tempVector.z * displacement
+                );
+            }
+            geometry.computeVertexNormals();
         }
 
         function createBrainModel() {
@@ -175,33 +209,37 @@
                 metalness: 0.1,
             });
 
-            // 1. Create Left and Right Hemispheres (Using scaled SphereGeometry for roundness)
-            const hemisphereGeometry = new THREE.SphereGeometry(2, 32, 32);
+            // 1. Create Left and Right Hemispheres 
+            const hemisphereGeometry = new THREE.SphereGeometry(2, 64, 64);
+            applyDisplacement(hemisphereGeometry, 0.2); // Apply strong displacement
 
-            // Right Hemisphere
-            const rightHemisphere = new THREE.Mesh(hemisphereGeometry, baseMaterial.clone());
-            rightHemisphere.scale.set(0.7, 1.2, 0.7);
-            rightHemisphere.position.x = 1.3;
+            // Right Hemisphere (clone the randomized geometry)
+            const rightHemisphere = new THREE.Mesh(hemisphereGeometry.clone(), baseMaterial.clone());
+            rightHemisphere.scale.set(0.8, 1.2, 0.7);
+            rightHemisphere.position.x = 0.4;
             rightHemisphere.position.z = -0.5;
             rightHemisphere.rotation.x = -Math.PI / 16;
             rightHemisphere.name = "Right Hemisphere Base";
 
-            // Left Hemisphere
-            const leftHemisphere = new THREE.Mesh(hemisphereGeometry, baseMaterial.clone());
-            leftHemisphere.scale.set(0.7, 1.2, 0.7);
-            leftHemisphere.position.x = -1.3;
+            // Left Hemisphere (clone the randomized geometry)
+            const leftHemisphere = new THREE.Mesh(hemisphereGeometry.clone(), baseMaterial.clone());
+            leftHemisphere.scale.set(0.8, 1.2, 0.7);
+            leftHemisphere.position.x = -0.4;
             leftHemisphere.position.z = -0.5;
             leftHemisphere.rotation.x = -Math.PI / 16;
             leftHemisphere.name = "Left Hemisphere Base";
 
             brainGroup.add(rightHemisphere);
             brainGroup.add(leftHemisphere);
-
+            
             // 2. Add Cerebellum Base (Using scaled SphereGeometry for roundness)
             const cerebellumGeometry = new THREE.SphereGeometry(1.5, 32, 32);
+            applyDisplacement(cerebellumGeometry, 0.1); // Apply subtle displacement
+
             const cerebellum = new THREE.Mesh(cerebellumGeometry, baseMaterial.clone());
             cerebellum.scale.set(1.1, 0.4, 0.75);
-            cerebellum.position.set(0, -3.2, 0.5);
+            // Position adjusted to merge with the bottom of the hemispheres
+            cerebellum.position.set(0, -2.5, 0.5); 
             cerebellum.name = "Cerebellum Base";
             brainGroup.add(cerebellum);
 
@@ -228,8 +266,46 @@
             });
 
             // Center the brain model and apply an initial rotation
-            brainGroup.rotation.y = Math.PI * 0.4;
-            brainGroup.position.y = 1;
+            brainGroup.rotation.x = brainTestXRotation; // X-axis: +90 degrees
+            brainGroup.rotation.y = brainTestYRotation; // Y-axis: 0 degrees
+            brainGroup.rotation.z = brainTestZRotation; // Z-axis: 0 degrees
+            brainGroup.position.y = 3.5; // Adjusted to move higher in the head
+        }
+
+        function createHeadModel() {
+            const headMaterial = new THREE.MeshBasicMaterial({
+                color: 0xd3d3d3, // Light gray for the wireframe
+                wireframe: true,
+                transparent: true,
+                opacity: 0.3 // Make it translucent
+            });
+
+            // Head (scaled sphere for an egg-like shape)
+            const headGeometry = new THREE.SphereGeometry(6, 32, 32);
+            const head = new THREE.Mesh(headGeometry, headMaterial);
+            head.scale.set(0.8, 1.1, 0.9); // Make it taller and slightly narrower
+            head.position.y = 2; // Position to encompass the brain
+
+            // Neck (cylinder)
+            const neckGeometry = new THREE.CylinderGeometry(2.5, 3.5, 3, 16); // Wider at bottom
+            const neck = new THREE.Mesh(neckGeometry, headMaterial);
+            neck.position.y = -3.5; // Connects below the head
+            neck.position.z = 0.5; // Slight forward tilt
+
+            // Nose (box) for front orientation
+            const noseGeometry = new THREE.BoxGeometry(0.8, 1.2, 0.8);
+            const nose = new THREE.Mesh(noseGeometry, headMaterial);
+            nose.position.set(0, 2, 6.5); // Positioned prominently at the front
+
+            headGroup.add(head);
+            headGroup.add(neck);
+            headGroup.add(nose);
+            headGroup.position.y = 1; // Adjust overall head group position
+            
+            // Align rotation with the initial brain rotation
+            headGroup.rotation.x = 0; // Head stable (no X rotation)
+            headGroup.rotation.y = 0; // Head stable (no Y rotation)
+            headGroup.rotation.z = 0; // Head stable (no Z rotation)
         }
 
         // --- Core Activation Logic (Reused by both manual click and auto mode) ---
