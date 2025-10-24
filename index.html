@@ -1,0 +1,363 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Brain Activation Visualizer</title>
+    <!-- Load Tailwind CSS --><script src="https://cdn.tailwindcss.com"></script>
+    <!-- Load Inter Font --><style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@100..900&display=swap');
+        body { font-family: 'Inter', sans-serif; }
+        /* Custom CSS for the canvas to fill the available space */
+        #container {
+            position: relative;
+            width: 100%;
+            height: 70vh; /* Adjust height for better viewing on various devices */
+            background-color: #e0e7ff; /* Darker background */
+            border-radius: 1rem;
+            box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+            overflow: hidden;
+        }
+        canvas {
+            display: block;
+            touch-action: none; /* Prevents default mobile behavior like scrolling */
+        }
+    </style>
+    <!-- Load Three.js and OrbitControls --><script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+</head>
+<body class="bg-gray-50 min-h-screen p-4 sm:p-8">
+
+    <div class="max-w-6xl mx-auto">
+        <header class="text-center mb-8">
+            <h1 class="text-4xl font-extrabold text-blue-800 tracking-tight">Brain Activity Explorer</h1>
+            <p class="text-lg text-gray-600 mt-2">Click on a highlighted region or press the button below to simulate activation.</p>
+        </header>
+
+        <!-- 3D Visualization Container --><div id="container">
+            <!-- Three.js scene will render here --><div id="loading-overlay" class="absolute inset-0 flex items-center justify-center bg-gray-50 bg-opacity-80 z-10 transition-opacity duration-300">
+                <div class="text-blue-600 font-semibold animate-pulse">Loading 3D Model...</div>
+            </div>
+        </div>
+
+        <!-- Control and Information Panel --><div class="mt-8 p-6 bg-white rounded-xl shadow-lg border border-gray-200">
+            <h2 class="text-2xl font-bold text-gray-800 mb-4">Activation Status</h2>
+            <div id="info-panel" class="space-y-3">
+                <p class="text-lg">
+                    <span class="font-semibold text-gray-500">Active Lobe/Region:</span>
+                    <span id="active-lobe" class="ml-2 font-bold text-gray-700 transition-colors duration-300">None Selected</span>
+                </p>
+                <p class="text-lg">
+                    <span class="font-semibold text-gray-500">Function:</span>
+                    <span id="function-desc" class="ml-2 italic text-gray-600">Click on a brain region (e.g., Frontal Lobe) to see its function highlighted.</span>
+                </p>
+                <div class="text-sm text-blue-500 pt-2 border-t mt-4">
+                    Hint: Use your mouse or finger to drag and rotate the 3D brain model.
+                </div>
+                <button id="auto-mode-toggle" class="mt-4 w-full py-3 px-4 rounded-xl font-bold transition duration-300 bg-blue-600 hover:bg-blue-700 text-white shadow-lg focus:outline-none focus:ring-4 focus:ring-blue-300 transform hover:scale-[1.01]">
+                    Start Auto Activation Sequence
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <script type="module">
+        // Global variables for Three.js and new auto mode
+        let scene, camera, renderer, controls, raycaster, mouse;
+        let isAutoMode = false;
+        let autoInterval = null;
+        let currentActiveLobe = null;
+
+        const container = document.getElementById('container');
+        const autoToggleBtn = document.getElementById('auto-mode-toggle');
+        const infoPanel = {
+            lobe: document.getElementById('active-lobe'),
+            function: document.getElementById('function-desc'),
+            loading: document.getElementById('loading-overlay')
+        };
+
+        // Base color for brain tissue (Hemispheres)
+        const tissueColor = 0xf0e0d0; // Light pink/beige tissue color
+        const tissueColorTHREE = new THREE.Color(tissueColor);
+
+        // Configuration for the brain lobes and regions with distinct resting colors
+        const LOBE_CONFIG = [
+            // Frontal Lobe (Red/Crimson)
+            { name: "Frontal Lobe (R)", restingColor: 0xFFD1DC, activeColor: 0xFF4747, function: "Executive functions, planning, attention, and motor control.", position: [1.3, 1.5, 1.5] },
+            { name: "Frontal Lobe (L)", restingColor: 0xFFD1DC, activeColor: 0xFF4747, function: "Executive functions, planning, attention, and motor control.", position: [-1.3, 1.5, 1.5] },
+
+            // Parietal Lobe (Orange/Gold)
+            { name: "Parietal Lobe (R)", restingColor: 0xFFEBCD, activeColor: 0xFFD700, function: "Processing touch, spatial awareness, and navigation.", position: [1.3, -1.0, 1.5] },
+            { name: "Parietal Lobe (L)", restingColor: 0xFFEBCD, activeColor: 0xFFD700, function: "Processing touch, spatial awareness, and navigation.", position: [-1.3, -1.0, 1.5] },
+
+            // Temporal Lobe (Blue/Light Blue)
+            { name: "Temporal Lobe (R)", restingColor: 0xE0FFFF, activeColor: 0x87CEFA, function: "Hearing, memory processing, and object recognition.", position: [1.3, 2.0, -1.5] },
+            { name: "Temporal Lobe (L)", restingColor: 0xE0FFFF, activeColor: 0x87CEFA, function: "Hearing, memory processing, and object recognition.", position: [-1.3, 2.0, -1.5] },
+
+            // Occipital Lobe (Green/Sea Green)
+            { name: "Occipital Lobe (R)", restingColor: 0xD0F0C0, activeColor: 0x3CB371, function: "Primary visual processing center.", position: [1.3, -2.5, -0.5] },
+            { name: "Occipital Lobe (L)", restingColor: 0xD0F0C0, activeColor: 0x3CB371, function: "Primary visual processing center.", position: [-1.3, -2.5, -0.5] },
+
+            // Cerebellum (Purple/Medium Purple)
+            { name: "Cerebellum", restingColor: 0xE6E6FA, activeColor: 0x9370DB, function: "Coordination, posture, motor learning, and balance.", position: [0, -3.2, 0.5] }
+        ];
+
+        let brainGroup = new THREE.Group();
+
+        // Utility function placeholder (not used for local rendering)
+        const exponentialBackoffFetch = async (url, options, retries = 3) => {
+            return null;
+        };
+
+        function init() {
+            // --- 1. Scene Setup ---
+            scene = new THREE.Scene();
+            scene.background = new THREE.Color(0xe0e7ff);
+            
+            // --- 2. Camera Setup ---
+            const aspectRatio = container.clientWidth / container.clientHeight;
+            camera = new THREE.PerspectiveCamera(50, aspectRatio, 0.1, 1000);
+            camera.position.set(0, 0, 15);
+
+            // --- 3. Renderer Setup ---
+            renderer = new THREE.WebGLRenderer({ antialias: true });
+            renderer.setSize(container.clientWidth, container.clientHeight);
+            renderer.setPixelRatio(window.devicePixelRatio);
+            container.appendChild(renderer.domElement);
+
+            // Hide loading overlay
+            infoPanel.loading.style.opacity = '0';
+            setTimeout(() => infoPanel.loading.style.display = 'none', 300);
+
+            // --- 4. Controls Setup (for interaction) ---
+            controls = new THREE.OrbitControls(camera, renderer.domElement);
+            controls.enableDamping = true;
+            controls.dampingFactor = 0.05;
+            controls.minDistance = 10;
+            controls.maxDistance = 30;
+
+            // --- 5. Lighting ---
+            const ambientLight = new THREE.AmbientLight(0x404040, 5); // soft white light
+            scene.add(ambientLight);
+
+            const directionalLight = new THREE.DirectionalLight(0xffffff, 4);
+            directionalLight.position.set(5, 10, 7.5);
+            scene.add(directionalLight);
+
+            // --- 6. Brain Model Creation (More Anatomical) ---
+            createBrainModel();
+            scene.add(brainGroup);
+
+            // --- 7. Raycasting Setup (for clicking) ---
+            raycaster = new THREE.Raycaster();
+            mouse = new THREE.Vector2();
+
+            // --- 8. Event Listeners ---
+            window.addEventListener('resize', onWindowResize);
+            renderer.domElement.addEventListener('click', onClick, false);
+            renderer.domElement.addEventListener('touchstart', onTouchStart, false);
+            autoToggleBtn.addEventListener('click', toggleAutoMode);
+        }
+
+        function createBrainModel() {
+            // Material for the main brain structure (not interactive)
+            const baseMaterial = new THREE.MeshStandardMaterial({
+                color: tissueColorTHREE,
+                roughness: 0.8, // Make it less shiny, more matte like tissue
+                metalness: 0.1,
+                side: THREE.DoubleSide
+            });
+
+            // Geometry for the interactive lobe indicators (small spheres)
+            const lobeGeometry = new THREE.SphereGeometry(0.5, 10, 10);
+            const lobeMaterialTemplate = new THREE.MeshStandardMaterial({
+                roughness: 0.6,
+                metalness: 0.1,
+            });
+
+            // 1. Create Left and Right Hemispheres (Using scaled SphereGeometry for roundness)
+            const hemisphereGeometry = new THREE.SphereGeometry(2, 32, 32);
+
+            // Right Hemisphere
+            const rightHemisphere = new THREE.Mesh(hemisphereGeometry, baseMaterial.clone());
+            rightHemisphere.scale.set(0.7, 1.2, 0.7);
+            rightHemisphere.position.x = 1.3;
+            rightHemisphere.position.z = -0.5;
+            rightHemisphere.rotation.x = -Math.PI / 16;
+            rightHemisphere.name = "Right Hemisphere Base";
+
+            // Left Hemisphere
+            const leftHemisphere = new THREE.Mesh(hemisphereGeometry, baseMaterial.clone());
+            leftHemisphere.scale.set(0.7, 1.2, 0.7);
+            leftHemisphere.position.x = -1.3;
+            leftHemisphere.position.z = -0.5;
+            leftHemisphere.rotation.x = -Math.PI / 16;
+            leftHemisphere.name = "Left Hemisphere Base";
+
+            brainGroup.add(rightHemisphere);
+            brainGroup.add(leftHemisphere);
+
+            // 2. Add Cerebellum Base (Using scaled SphereGeometry for roundness)
+            const cerebellumGeometry = new THREE.SphereGeometry(1.5, 32, 32);
+            const cerebellum = new THREE.Mesh(cerebellumGeometry, baseMaterial.clone());
+            cerebellum.scale.set(1.1, 0.4, 0.75);
+            cerebellum.position.set(0, -3.2, 0.5);
+            cerebellum.name = "Cerebellum Base";
+            brainGroup.add(cerebellum);
+
+            // 3. Create interactive Lobe/Region Spheres
+            LOBE_CONFIG.forEach(config => {
+                const material = lobeMaterialTemplate.clone();
+                // Initialize the sphere with its RESTING color
+                material.color.setHex(config.restingColor);
+
+                const lobe = new THREE.Mesh(lobeGeometry, material);
+                lobe.position.set(config.position[0], config.position[1], config.position[2]);
+
+                // Store metadata on the mesh object for raycasting
+                lobe.userData = {
+                    name: config.name,
+                    function: config.function,
+                    restingColor: config.restingColor,
+                    activeColor: config.activeColor
+                };
+
+                lobe.rotation.z = Math.random() * Math.PI;
+
+                brainGroup.add(lobe);
+            });
+
+            // Center the brain model and apply an initial rotation
+            brainGroup.rotation.y = Math.PI * 0.4;
+            brainGroup.position.y = 1;
+        }
+
+        // --- Core Activation Logic (Reused by both manual click and auto mode) ---
+
+        function activateLobe(lobe) {
+            // 1. Reset previous active lobe color
+            if (currentActiveLobe && currentActiveLobe !== lobe) {
+                currentActiveLobe.material.color.setHex(currentActiveLobe.userData.restingColor);
+            }
+            
+            // 2. Set new active lobe color (the brighter highlight)
+            lobe.material.color.setHex(lobe.userData.activeColor);
+            currentActiveLobe = lobe;
+
+            // 3. Update info panel
+            infoPanel.lobe.textContent = lobe.userData.name;
+            infoPanel.function.textContent = lobe.userData.function;
+            infoPanel.lobe.classList.remove('text-gray-700');
+            infoPanel.lobe.classList.add('text-red-600', 'transition-colors', 'duration-300');
+        }
+
+        function resetActivation() {
+            if (currentActiveLobe) {
+                currentActiveLobe.material.color.setHex(currentActiveLobe.userData.restingColor);
+                currentActiveLobe = null;
+            }
+            // Reset info panel
+            infoPanel.lobe.textContent = 'None Selected';
+            infoPanel.function.textContent = 'Click on a brain region (e.g., Frontal Lobe) to see its function highlighted.';
+            infoPanel.lobe.classList.add('text-gray-700');
+            infoPanel.lobe.classList.remove('text-red-600');
+        }
+
+        // --- Auto Mode Functions ---
+
+        function toggleAutoMode() {
+            if (isAutoMode) {
+                // Stop mode
+                clearInterval(autoInterval);
+                isAutoMode = false;
+                autoToggleBtn.textContent = 'Start Auto Activation Sequence';
+                autoToggleBtn.classList.remove('bg-red-600', 'hover:bg-red-700', 'shadow-xl');
+                autoToggleBtn.classList.add('bg-blue-600', 'hover:bg-blue-700', 'shadow-lg');
+                resetActivation(); // Clear the last active lobe
+            } else {
+                // Start mode
+                isAutoMode = true;
+                autoToggleBtn.textContent = 'Stop Auto Activation Sequence';
+                autoToggleBtn.classList.remove('bg-blue-600', 'hover:bg-blue-700', 'shadow-lg');
+                autoToggleBtn.classList.add('bg-red-600', 'hover:bg-red-700', 'shadow-xl');
+                
+                const interactiveObjects = brainGroup.children.filter(child => child.userData.name);
+                
+                autoInterval = setInterval(() => {
+                    // Pick a random lobe
+                    const randomIndex = Math.floor(Math.random() * interactiveObjects.length);
+                    const randomLobe = interactiveObjects[randomIndex];
+                    
+                    // Activate the random lobe
+                    activateLobe(randomLobe);
+
+                }, 1000); // Activate a new lobe every 1 second
+            }
+        }
+
+        // --- Input Handlers ---
+
+        function onWindowResize() {
+            camera.aspect = container.clientWidth / container.clientHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(container.clientWidth, container.clientHeight);
+        }
+
+        function onClick(event) {
+            // If auto mode is running, a manual click cancels it first
+            if (isAutoMode) {
+                toggleAutoMode();
+            }
+
+            const rect = renderer.domElement.getBoundingClientRect();
+            mouse.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
+            mouse.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
+
+            handleInteraction();
+        }
+
+        function onTouchStart(event) {
+            if (event.touches.length > 1) return;
+
+            // If auto mode is running, a manual touch cancels it first
+            if (isAutoMode) {
+                toggleAutoMode();
+            }
+
+            const rect = renderer.domElement.getBoundingClientRect();
+            mouse.x = ((event.touches[0].clientX - rect.left) / rect.width) * 2 - 1;
+            mouse.y = -((event.touches[0].clientY - rect.top) / rect.height) * 2 + 1;
+
+            handleInteraction();
+        }
+
+        function handleInteraction() {
+            raycaster.setFromCamera(mouse, camera);
+
+            const interactiveObjects = brainGroup.children.filter(child => child.userData.name);
+
+            const intersects = raycaster.intersectObjects(interactiveObjects);
+
+            if (intersects.length > 0) {
+                activateLobe(intersects[0].object);
+            } else {
+                resetActivation();
+            }
+        }
+
+
+        function animate() {
+            requestAnimationFrame(animate);
+            controls.update();
+            renderer.render(scene, camera);
+        }
+
+        // Start the application when the window loads
+        window.onload = function () {
+            init();
+            animate();
+        };
+
+    </script>
+</body>
+</html>
